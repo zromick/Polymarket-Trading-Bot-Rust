@@ -74,14 +74,36 @@ The design goal isn’t “hit a home run trade”, it’s **durable growth**: d
 
 ## Quick Start
 
-### 1. Clone
+### 1. Prerequisites
+
+**Machine**
+
+- **Linux** or **macOS** (recommended) or **Windows** (WSL2 is easier than native Windows for Rust + Trunk; native Windows works if `cargo` and `trunk` are on `PATH`).
+- ~2–4 GB free disk for Rust toolchain + first compile; stable internet for crate downloads.
+
+**Rust (required)**
+
+1. Install **[rustup](https://rustup.rs/)** if you don’t have Rust yet.
+2. Use the default **stable** toolchain (this project targets Rust **1.70+**).
+3. Confirm in a **new terminal**:
+
+   ```bash
+   rustc --version   # should show 1.70 or higher
+   cargo --version
+   ```
+
+**Polymarket (for live trading)**
+
+- A Polymarket account, **USDC on Polygon**, and **CLOB API** credentials. See the [official CLOB docs](https://docs.polymarket.com/developers/CLOB/). You still need a valid `config.json` to start the app; use **simulation mode** (step 7) if you only want to explore the UI first.
+
+### 2. Clone
 
 ```bash
-git clone https://github.com/Krypto-Hashers-Community/polymarket-copytrading-bot-rust-sport-crypto.git
-cd polymarket-copytrading-bot-rust-sport-crypto
+git clone https://github.com/HyperBuildX/Polymarket-Trading-Bot-Rust.git
+cd Polymarket-Trading-Bot-Rust
 ```
 
-### 2. Configure
+### 3. Configure
 
 Create two files in the project root:
 
@@ -130,7 +152,7 @@ OPENROUTER_API_KEY=sk-or-...
 # or ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### 3. Build & Run
+### 4. Build & Run
 
 ```bash
 # Build the frontend (once)
@@ -142,7 +164,7 @@ cargo run --release --bin main_copytrading
 
 Open **http://localhost:8000** — that's it. Dashboard, agent, logs, portfolio, everything is there.
 
-### 4. Simulation mode (no real orders)
+### 5. Simulation mode (no real orders)
 
 ```bash
 cargo run --release --bin main_copytrading -- --simulation
