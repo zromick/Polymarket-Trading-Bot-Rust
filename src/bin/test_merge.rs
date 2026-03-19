@@ -1,14 +1,3 @@
-//! Test binary for the merge function of Up and Down token amounts.
-//!
-//! Default: check balance of current BTC 15-minute Up/Down tokens and show merge result.
-//!   cargo run --bin test_merge
-//!
-//! Unit tests only:
-//!   cargo run --bin test_merge -- --unit
-//!
-//! Use a specific condition ID:
-//!   cargo run --bin test_merge -- --condition-id <ID> --config config.json
-
 use anyhow::Result;
 use clap::Parser;
 use polymarket_trading_bot::merge::{merge_up_down_amounts, MergeResult};
@@ -18,19 +7,15 @@ use polymarket_trading_bot::{Config, PolymarketApi};
 #[command(name = "test_merge")]
 #[command(about = "Test merge logic for Up and Down token amounts (default: current BTC 15m)")]
 struct Args {
-    /// Run unit tests only; no API or balance check
     #[arg(long)]
     unit: bool,
 
-    /// Condition ID of market to check (overrides default current-BTC-15m)
     #[arg(long)]
     condition_id: Option<String>,
 
-    /// Execute merge: redeem complete sets (Up+Down) to USDC via CTF relayer
     #[arg(long)]
     merge: bool,
 
-    /// Config file path (for balance check / current BTC market)
     #[arg(short, long, default_value = "config.json")]
     config: String,
 }
@@ -75,7 +60,6 @@ fn run_unit_tests() -> bool {
     ok
 }
 
-/// Discover the current (or most recent) BTC 15-minute Up/Down market.
 async fn discover_current_btc_15m(api: &PolymarketApi) -> Result<(String, String)> {
     let current_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -101,8 +85,6 @@ async fn discover_current_btc_15m(api: &PolymarketApi) -> Result<(String, String
     anyhow::bail!("Could not find current or recent active BTC 15-minute market (tried btc-updown-15m-{} and 3 previous periods)", rounded)
 }
 
-/// Run merge check using API: fetch Up/Down balances for condition_id, compute merge, print result.
-/// Returns the MergeResult so the caller can decide to run merge_complete_sets.
 async fn run_merge_check(api: &PolymarketApi, condition_id: &str, title: &str) -> Result<MergeResult> {
     let market = api.get_market(condition_id).await?;
     let mut up_token_id: Option<String> = None;

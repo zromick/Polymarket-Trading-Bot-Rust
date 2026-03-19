@@ -1,11 +1,8 @@
-//! Shared state for the copy-trading UI: logs, status, positions. Served as JSON at /api/state.
-
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Keep only recent activity so the UI stays real-time; trim older entries.
 const MAX_LOGS: usize = 50;
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,7 +75,6 @@ impl Default for BotState {
     }
 }
 
-/// Global UI state. Clone to get Arc<RwLock<BotState>> for handlers.
 pub type SharedState = Arc<RwLock<BotState>>;
 
 pub fn new_shared_state() -> SharedState {
@@ -115,38 +111,38 @@ pub async fn set_ui_config(state: SharedState, delta_highlight_sec: u64, delta_a
 
 pub async fn push_trade(
     state: SharedState,
-    tag: String,
-    side: String,
-    outcome: String,
-    size: String,
-    price: String,
-    slug: String,
-    target_address: Option<String>,
-    copy_status: Option<String>,
+    tag: &str,
+    side: &str,
+    outcome: &str,
+    size: &str,
+    price: &str,
+    slug: &str,
+    target_address: Option<&str>,
+    copy_status: Option<&str>,
 ) {
     let mut s = state.write().await;
     s.logs.push(TradeLog {
         time: chrono::Utc::now().to_rfc3339(),
-        tag,
-        side,
-        outcome,
-        size,
-        price,
-        slug,
-        target_address,
-        copy_status,
+        tag: tag.to_string(),
+        side: side.to_string(),
+        outcome: outcome.to_string(),
+        size: size.to_string(),
+        price: price.to_string(),
+        slug: slug.to_string(),
+        target_address: target_address.map(String::from),
+        copy_status: copy_status.map(String::from),
     });
     if s.logs.len() > MAX_LOGS {
         s.logs.remove(0);
     }
 }
 
-/// prev_sizes: (user -> (key "slug|outcome" -> size)) for delta
 pub async fn set_positions(
     state: SharedState,
-    user: String,
+    user: &str,
     positions: Vec<(String, String, f64, f64)>, // (slug, outcome, size, cur_price)
 ) {
+    let user = user.to_string();
     let mut prev: HashMap<String, f64> = HashMap::new();
     {
         let s = state.read().await;
@@ -162,7 +158,7 @@ pub async fn set_positions(
     for (slug, outcome, size, cur_price) in positions {
         let key = format!("{}|{}", slug, outcome);
         let prev_size = prev.get(&key).copied();
-        prev.insert(key.clone(), size);
+        prev.insert(key, size);
         let (delta, delta_at) = prev_size
             .map(|ps| {
                 let d = size - ps;

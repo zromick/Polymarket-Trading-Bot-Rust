@@ -1,7 +1,3 @@
-//! Polymarket Real-Time Activity stream (same as @polymarket/real-time-data-client).
-//! Connects to wss://ws-live-data.polymarket.com, subscribes to activity/trades,
-//! filters by target address, and runs copy-trade flow for instant updates.
-
 use anyhow::{anyhow, Result};
 use futures_util::{SinkExt, StreamExt};
 use log::{info, warn};
@@ -20,8 +16,8 @@ const ACTIVITY_WS_URL: &str = "wss://ws-live-data.polymarket.com";
 const PING_INTERVAL_SECS: u64 = 5;
 const RECONNECT_DELAY_SECS: u64 = 5;
 const MAX_SEEN: usize = 10_000;
+const PING_MSG: &str = "ping";
 
-/// Notify UI that state changed (e.g. new trade).
 pub type NotifyTx = broadcast::Sender<()>;
 
 fn activity_payload_to_leader_trade(p: &serde_json::Value) -> Option<LeaderTrade> {
@@ -61,11 +57,8 @@ async fn run_activity_stream_loop(
     let (ws_stream, _) = connect_async(ACTIVITY_WS_URL).await?;
     let (mut write, mut read) = ws_stream.split();
 
-    let subscribe = serde_json::json!({
-        "action": "subscribe",
-        "subscriptions": [{ "topic": "activity", "type": "trades" }]
-    });
-    write.send(Message::Text(subscribe.to_string())).await?;
+    const SUBSCRIBE_MSG: &str = r#"{"action":"subscribe","subscriptions":[{"topic":"activity","type":"trades"}]}"#;
+    write.send(Message::Text(SUBSCRIBE_MSG.to_string())).await?;
 
     let mut seen: HashSet<String> = HashSet::new();
     let ping_handle = tokio::spawn({
@@ -73,7 +66,7 @@ async fn run_activity_stream_loop(
         async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(PING_INTERVAL_SECS)).await;
-                if write.send(Message::Text("ping".to_string())).await.is_err() {
+                if write.send(Message::Text(PING_MSG.to_string())).await.is_err() {
                     break;
                 }
             }
@@ -135,14 +128,14 @@ async fn run_activity_stream_loop(
             let outcome = trade.outcome.as_deref().unwrap_or("?");
             web_state::push_trade(
                 web_state.clone(),
-                "LIVE".to_string(),
-                trade.side.clone(),
-                outcome.to_string(),
-                trade.size.clone(),
-                trade.price.clone(),
-                slug.to_string(),
-                Some(proxy.clone()),
-                Some("filtered".to_string()),
+                "LIVE",
+                &trade.side,
+                outcome,
+                &trade.size,
+                &trade.price,
+                slug,
+                Some(proxy.as_str()),
+                Some("filtered"),
             )
             .await;
             let _ = notify_tx.send(());
@@ -158,14 +151,14 @@ async fn run_activity_stream_loop(
             );
             web_state::push_trade(
                 web_state.clone(),
-                "SIM".to_string(),
-                trade.side.clone(),
-                outcome.to_string(),
-                trade.size.clone(),
-                trade.price.clone(),
-                slug.to_string(),
-                Some(proxy.clone()),
-                Some("skipped".to_string()),
+                "SIM",
+                &trade.side,
+                outcome,
+                &trade.size,
+                &trade.price,
+                slug,
+                Some(proxy.as_str()),
+                Some("skipped"),
             )
             .await;
             let _ = notify_tx.send(());
@@ -193,14 +186,14 @@ async fn run_activity_stream_loop(
                 );
                 web_state::push_trade(
                     web_state.clone(),
-                    "LIVE".to_string(),
-                    trade.side.clone(),
-                    outcome.to_string(),
-                    trade.size.clone(),
-                    trade.price.clone(),
-                    slug.to_string(),
-                    Some(proxy.clone()),
-                    Some("ok".to_string()),
+                    "LIVE",
+                    &trade.side,
+                    outcome,
+                    &trade.size,
+                    &trade.price,
+                    slug,
+                    Some(proxy.as_str()),
+                    Some("ok"),
                 )
                 .await;
                 let _ = notify_tx.send(());
@@ -214,14 +207,14 @@ async fn run_activity_stream_loop(
                 );
                 web_state::push_trade(
                     web_state.clone(),
-                    "LIVE".to_string(),
-                    trade.side.clone(),
-                    outcome.to_string(),
-                    trade.size.clone(),
-                    trade.price.clone(),
-                    slug.to_string(),
-                    Some(proxy.clone()),
-                    Some("ok".to_string()),
+                    "LIVE",
+                    &trade.side,
+                    outcome,
+                    &trade.size,
+                    &trade.price,
+                    slug,
+                    Some(proxy.as_str()),
+                    Some("ok"),
                 )
                 .await;
                 let _ = notify_tx.send(());
@@ -230,16 +223,17 @@ async fn run_activity_stream_loop(
                 let slug = trade.slug.as_deref().unwrap_or("?");
                 warn!("LIVE | {} {} | from {} | FAILED: {}", trade.side, slug, proxy, e);
                 let outcome = trade.outcome.as_deref().unwrap_or("?");
+                let copy_status = format!("FAILED: {}", e);
                 web_state::push_trade(
                     web_state.clone(),
-                    "LIVE".to_string(),
-                    trade.side.clone(),
-                    outcome.to_string(),
-                    trade.size.clone(),
-                    trade.price.clone(),
-                    slug.to_string(),
-                    Some(proxy.clone()),
-                    Some(format!("FAILED: {}", e)),
+                    "LIVE",
+                    &trade.side,
+                    outcome,
+                    &trade.size,
+                    &trade.price,
+                    slug,
+                    Some(proxy.as_str()),
+                    Some(copy_status.as_str()),
                 )
                 .await;
                 let _ = notify_tx.send(());
@@ -250,8 +244,6 @@ async fn run_activity_stream_loop(
     Err(anyhow!("WebSocket stream ended"))
 }
 
-/// Spawn background task that connects to activity stream, subscribes to trades,
-/// filters by target set (1 or more), and runs copy-trade (or sim). Reconnects on disconnect.
 pub fn spawn_activity_stream(
     targets: Vec<String>,
     api: Arc<crate::api::PolymarketApi>,

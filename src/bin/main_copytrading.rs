@@ -1,7 +1,3 @@
-//! Copy-trading backend: follow leader addresses from trade.toml.
-//! Config: config.json (polymarket credentials + API keys), trade.toml (targets, filters, exit).
-//! Serves UI at port (trade.toml) and /api/state for the Leptos frontend.
-
 use anyhow::{Context, Result};
 use axum::{
     body::Body,
@@ -35,19 +31,15 @@ use polymarket_trading_bot::web_state::{self, SharedState};
 #[command(name = "main_copytrading")]
 #[command(about = "Copy-trade from leader addresses (trade.toml). Uses config.json for Polymarket credentials.")]
 pub struct CopyArgs {
-    /// Config file (polymarket credentials, API key)
     #[arg(short, long, default_value = "config.json")]
     pub config: PathBuf,
 
-    /// Copy-trading config (targets, filters, exit)
     #[arg(short, long, default_value = "trade.toml")]
     pub trade_config: PathBuf,
 
-    /// Simulation mode
     #[arg(long)]
     pub simulation: bool,
 
-    /// Directory to serve UI from (default: frontend/dist). Build with: cd frontend && trunk build
     #[arg(long, default_value = "frontend/dist")]
     pub ui_dir: PathBuf,
 }
@@ -59,7 +51,6 @@ struct AppState {
     web: SharedState,
     ui_dir: PathBuf,
     notify: NotifyTx,
-    /// Shared client for OpenRouter (connection reuse, pool); keeps agent chat fast.
     openrouter_client: reqwest::Client,
 }
 
@@ -129,7 +120,6 @@ async fn api_leaderboard(
     Ok(axum::Json(body))
 }
 
-/// Provider entry for dropdown: only includes providers that have API key set in .env.
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentProvider {
@@ -175,19 +165,15 @@ async fn api_agent_providers() -> Json<AgentProvidersResponse> {
     Json(AgentProvidersResponse { providers })
 }
 
-/// Request body for agent chat.
 #[derive(Debug, serde::Deserialize)]
 struct AgentChatRequest {
     message: String,
-    /// Provider id: "openrouter" | "openai" | "claude". If missing, uses first available.
     #[serde(default)]
     provider: Option<String>,
-    /// Model override for that provider. If missing, uses provider default.
     #[serde(default)]
     model: Option<String>,
 }
 
-/// Response body for agent chat.
 #[derive(Debug, serde::Serialize)]
 struct AgentChatResponse {
     reply: String,
@@ -342,7 +328,10 @@ async fn api_agent_chat(
             ProviderKind::OpenRouter => {
                 req = req
                     .header("Authorization", format!("Bearer {}", api_key))
-                    .header("HTTP-Referer", "https://github.com/frogansol/fast-polymarket-copytrading-bot-rust");
+                    .header(
+                        "HTTP-Referer",
+                        "https://github.com/Krypto-Hashers-Community/polymarket-copytrading-bot-rust-sport-crypto",
+                    );
             }
             ProviderKind::OpenAI => {
                 req = req.header("Authorization", format!("Bearer {}", api_key));
@@ -417,7 +406,6 @@ async fn api_state(State(app): State<AppState>) -> axum::response::Response {
     res
 }
 
-/// Serve index.html for GET / so the SPA always loads the same entry point.
 async fn serve_index(State(app): State<AppState>) -> Result<Response, (StatusCode, &'static str)> {
     use axum::response::IntoResponse;
     let path = app.ui_dir.join("index.html");
@@ -619,15 +607,16 @@ async fn main() -> Result<()> {
         u.extend(targets.iter().cloned());
         u
     };
+    let users_lower: Vec<String> = users_to_fetch.iter().map(|s| s.to_lowercase()).collect();
     let mut initial_done: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
-        let fetch_futures: Vec<_> = users_to_fetch
+        let fetch_futures: Vec<_> = users_lower
             .iter()
-            .map(|user| {
-                let user_lower = user.to_lowercase();
+            .map(|user_lower| {
                 let api = api.clone();
+                let user_lower = user_lower.clone();
                 async move {
-                    let res = api.get_positions(&user_lower).await;
+                    let res = api.get_positions(user_lower.as_str()).await;
                     (user_lower, res)
                 }
             })
@@ -646,30 +635,32 @@ async fn main() -> Result<()> {
                 .iter()
                 .map(|p| {
                     (
-                        p.slug.clone().unwrap_or_else(|| "?".to_string()),
-                        p.outcome.clone().unwrap_or_else(|| "?".to_string()),
+                        p.slug.as_deref().unwrap_or("?").to_string(),
+                        p.outcome.as_deref().unwrap_or("?").to_string(),
                         p.size,
                         p.cur_price,
                     )
                 })
                 .collect();
-            web_state::set_positions(web_state.clone(), user_lower.clone(), pos_list).await;
+            web_state::set_positions(web_state.clone(), user_lower.as_str(), pos_list).await;
 
             if !initial_done.contains(&user_lower) {
                 info!("INIT | {} | {} position(s)", user_lower, positions.len());
                 for p in &positions {
                     let slug = p.slug.as_deref().unwrap_or("?");
                     let outcome = p.outcome.as_deref().unwrap_or("?");
+                    let size_str = format!("{:.2}", p.size);
+                    let price_str = format!("{:.3}", p.cur_price);
                     web_state::push_trade(
                         web_state.clone(),
-                        "POS".to_string(),
-                        "—".to_string(),
-                        outcome.to_string(),
-                        format!("{:.2}", p.size),
-                        format!("{:.3}", p.cur_price),
-                        slug.to_string(),
-                        Some(user_lower.clone()),
-                        Some("loaded".to_string()),
+                        "POS",
+                        "—",
+                        outcome,
+                        &size_str,
+                        &price_str,
+                        slug,
+                        Some(user_lower.as_str()),
+                        Some("loaded"),
                     )
                     .await;
                     let _ = notify_tx.send(());

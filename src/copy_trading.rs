@@ -1,6 +1,3 @@
-//! Copy-trading backend: follow one or more leader addresses on Polymarket.
-//! Config from trade.toml; credentials from config.json. Polls Data API positions and copies trades via CLOB.
-
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rust_decimal::prelude::{ToPrimitive};
@@ -66,7 +63,6 @@ fn default_port() -> u16 {
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct CopySection {
-    /// Single address or list (target_address / target_addresses)
     #[serde(alias = "target_address", alias = "target_addresses")]
     pub target_addresses: Option<toml::Value>,
     #[serde(default = "default_true")]
@@ -115,7 +111,6 @@ impl CopyTradingConfig {
         toml::from_str(&s).context("Failed to parse trade.toml")
     }
 
-    /// Resolve target_addresses to a Vec<String> (supports target_address = "0x..." or target_addresses = ["0x...", ...]).
     pub fn target_addresses(&self) -> Vec<String> {
         let raw = match self.copy.target_addresses.as_ref() {
             Some(v) => v.clone(),
@@ -151,7 +146,6 @@ pub struct LeaderTrade {
 
 // ---------- Filter ----------
 
-/// Returns true if the trade passes filters and should be copied.
 pub fn should_copy_trade(config: &CopyTradingConfig, trade: &LeaderTrade) -> bool {
     if trade.side == "SELL" && !config.copy.revert_trade {
         return false;
@@ -186,21 +180,46 @@ pub fn should_copy_trade(config: &CopyTradingConfig, trade: &LeaderTrade) -> boo
 
 // ---------- Copy trade (place market order) ----------
 
-/// Copy one leader trade: compute amount (with multiplier and buy cap), then place FOK market order.
 pub async fn copy_trade(
     api: &PolymarketApi,
     trade: &LeaderTrade,
     multiplier: f64,
     buy_amount_limit_usd: f64,
 ) -> Result<Option<(f64, f64)>> {
-    let size = Decimal::from_str(&trade.size).unwrap_or(Decimal::ZERO);
-    let price = Decimal::from_str(&trade.price).unwrap_or(Decimal::ZERO);
-    let mult = Decimal::from_str(&multiplier.to_string()).unwrap_or(Decimal::ONE);
+    // `trade.size` / `trade.price` are produced from JSON numeric payloads and
+    // can sometimes end up in scientific notation (e.g. `1e-7`) depending on formatting.
+    // `Decimal::from_str` may fail in those cases, which would make size/price = 0
+    // and cause the bot to skip order placement.
+    fn parse_dec(s: &str) -> Decimal {
+        if let Ok(d) = Decimal::from_str(s) {
+            return d;
+        }
+        match s.parse::<f64>() {
+            Ok(f) => Decimal::from_f64_retain(f).unwrap_or(Decimal::ZERO),
+            Err(_) => Decimal::ZERO,
+        }
+    }
+
+    let size = parse_dec(&trade.size);
+    let price = parse_dec(&trade.price);
+    let mult = Decimal::from_f64_retain(multiplier).unwrap_or(Decimal::ONE);
+
+    // Avoid nonsense orders when parsing failed.
+    // SELL market orders don't require price; only BUY does.
+    if size <= Decimal::ZERO || mult == Decimal::ZERO {
+        return Ok(None);
+    }
+    if trade.side == "BUY" && price <= Decimal::ZERO {
+        return Ok(None);
+    }
 
     let (amount_usd_or_shares, size_out, is_buy) = if trade.side == "BUY" {
         let amount_usd = size * price * mult;
         let capped = if buy_amount_limit_usd > 0.0 {
-            let limit = Decimal::from_str(&buy_amount_limit_usd.to_string()).unwrap_or(Decimal::ZERO);
+            let limit = Decimal::from_f64_retain(buy_amount_limit_usd).unwrap_or(Decimal::ZERO);
+            if limit <= Decimal::ZERO {
+                return Ok(None);
+            }
             if amount_usd > limit {
                 let size_out = limit / price;
                 (limit, size_out, true)
@@ -223,14 +242,18 @@ pub async fn copy_trade(
         return Ok(None);
     }
 
-    api.place_market_order(
-        &trade.asset_id,
-        amount_usd_or_shares,
-        &trade.side,
-        Some("FOK"),
-    )
-    .await
-    .context("place_market_order failed")?;
+    // Try FOK first (stricter), then fall back to FAK to increase fill probability.
+    match api
+        .place_market_order(&trade.asset_id, amount_usd_or_shares, &trade.side, Some("FOK"))
+        .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            api.place_market_order(&trade.asset_id, amount_usd_or_shares, &trade.side, Some("FAK"))
+                .await
+                .context("place_market_order failed (FOK and fallback FAK)")?;
+        }
+    }
 
     if is_buy {
         let price_f = price.to_f64().unwrap_or(0.0);
@@ -299,10 +322,8 @@ pub fn position_snapshot(p: &DataApiPosition) -> PositionSnapshot {
     }
 }
 
-/// Map of asset_id -> snapshot. Store per-user for polling diff.
 pub type SnapshotMap = HashMap<String, PositionSnapshot>;
 
-/// Build snapshot map from Data API positions (for diff_to_trades).
 pub fn build_snapshot_map(positions: &[DataApiPosition]) -> SnapshotMap {
     let mut m = HashMap::new();
     for p in positions {
@@ -311,13 +332,13 @@ pub fn build_snapshot_map(positions: &[DataApiPosition]) -> SnapshotMap {
     m
 }
 
-/// Build leader trades from position diff (curr vs prev).
 pub fn diff_to_trades(
     user: &str,
     curr: &HashMap<String, PositionSnapshot>,
     prev: &HashMap<String, PositionSnapshot>,
 ) -> Vec<LeaderTrade> {
-    let mut out = Vec::new();
+    let cap = curr.len() + prev.len();
+    let mut out = Vec::with_capacity(cap);
     let now = Utc::now().timestamp_millis().to_string();
     for (asset, c) in curr.iter() {
         let s = prev.get(asset).map(|p| p.size).unwrap_or(0.0);
@@ -423,55 +444,65 @@ async fn run_exit_check(
 ) -> Result<()> {
     let positions = api.get_positions(wallet).await?;
 
-    let mut ent = entries.lock().await;
-    for p in positions {
-        let entry = match ent.get_mut(&p.asset) {
-            Some(e) if e.size > Decimal::ZERO => e,
-            _ => continue,
-        };
-        let cur_price = Decimal::from_str(&p.cur_price.to_string()).unwrap_or(Decimal::ZERO);
-        let pos_size = Decimal::from_str(&p.size.to_string()).unwrap_or(Decimal::ZERO);
-        let size_b = if entry.size <= pos_size {
-            entry.size
-        } else {
-            pos_size
-        };
-        if size_b <= Decimal::ZERO {
-            continue;
-        }
-        let pnl_pct = if entry.entry_price > Decimal::ZERO {
-            (cur_price - entry.entry_price) / entry.entry_price * Decimal::from(100)
-        } else {
-            Decimal::ZERO
-        };
-        let pnl_f = pnl_pct.to_f64().unwrap_or(0.0);
-        if cur_price > entry.max_price {
-            entry.max_price = cur_price;
-        }
-        let trail_pct = if entry.max_price > Decimal::ZERO {
-            (entry.max_price - cur_price) / entry.max_price * Decimal::from(100)
-        } else {
-            Decimal::ZERO
-        };
-        let trail_f = trail_pct.to_f64().unwrap_or(0.0);
+    let to_sell: Vec<(String, Decimal, Decimal)> = {
+        let mut ent = entries.lock().await;
+        let mut out = Vec::new();
+        for p in &positions {
+            let entry = match ent.get_mut(&p.asset) {
+                Some(e) if e.size > Decimal::ZERO => e,
+                _ => continue,
+            };
+            let cur_price = Decimal::from_str(&p.cur_price.to_string()).unwrap_or(Decimal::ZERO);
+            let pos_size = Decimal::from_str(&p.size.to_string()).unwrap_or(Decimal::ZERO);
+            let size_b = if entry.size <= pos_size {
+                entry.size
+            } else {
+                pos_size
+            };
+            if size_b <= Decimal::ZERO {
+                continue;
+            }
+            let pnl_pct = if entry.entry_price > Decimal::ZERO {
+                (cur_price - entry.entry_price) / entry.entry_price * Decimal::from(100)
+            } else {
+                Decimal::ZERO
+            };
+            let pnl_f = pnl_pct.to_f64().unwrap_or(0.0);
+            if cur_price > entry.max_price {
+                entry.max_price = cur_price;
+            }
+            let trail_pct = if entry.max_price > Decimal::ZERO {
+                (entry.max_price - cur_price) / entry.max_price * Decimal::from(100)
+            } else {
+                Decimal::ZERO
+            };
+            let trail_f = trail_pct.to_f64().unwrap_or(0.0);
 
-        let should_sell = (take_profit > 0.0 && pnl_f >= take_profit)
-            || (stop_loss > 0.0 && pnl_f <= -stop_loss)
-            || (trailing_stop > 0.0 && trail_f >= trailing_stop);
-        if !should_sell {
-            continue;
+            let should_sell = (take_profit > 0.0 && pnl_f >= take_profit)
+                || (stop_loss > 0.0 && pnl_f <= -stop_loss)
+                || (trailing_stop > 0.0 && trail_f >= trailing_stop);
+            if should_sell {
+                out.push((p.asset.clone(), size_b, cur_price));
+            }
         }
+        out
+    };
 
+    for (asset, size_b, cur_price) in &to_sell {
         let amount = (size_b * cur_price).to_f64().unwrap_or(0.0);
-        drop(ent);
-        api.place_market_order(&p.asset, amount, "SELL", Some("FOK"))
+        api.place_market_order(asset, amount, "SELL", Some("FOK"))
             .await
             .context("exit sell failed")?;
-        ent = entries.lock().await;
-        if let Some(e) = ent.get_mut(&p.asset) {
-            e.size = e.size - size_b;
-            if e.size <= Decimal::ZERO {
-                ent.remove(&p.asset);
+    }
+
+    if !to_sell.is_empty() {
+        let mut ent = entries.lock().await;
+        for (asset, size_b, _) in to_sell {
+            if let Some(e) = ent.get_mut(&asset) {
+                e.size = e.size - size_b;
+                if e.size <= Decimal::ZERO {
+                    ent.remove(&asset);
+                }
             }
         }
     }
