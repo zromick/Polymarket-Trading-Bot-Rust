@@ -12,12 +12,13 @@ simulation = false
 [copy]
 # Leader address(es) to copy
 target_address = [
-    "0x248a26224C346fDB71D6c91DD768fCdd1c88a63B"
+    "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1",
+    "0x6480542954b70a674a74bd1a6015dec362dc8dc5",
+    "0x204f72f35326db932158cba6adff0b9a1da95e14"
 ]
 revert_trade = false
 size_multiplier = 1
-# How often to refresh positions in the Web UI (seconds). Copy-trading uses the
-# Polymarket activity WebSocket for fills, not this poll. Lower = snappier portfolio UI only.
+# How often to check targets' positions (seconds). Can use decimals, e.g. 0.5 = twice per second.
 poll_interval_sec = 0.5
 
 [exit]
