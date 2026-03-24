@@ -503,7 +503,7 @@ async fn main() -> Result<()> {
     let targets = copy_config.target_addresses();
     if targets.is_empty() {
         anyhow::bail!(
-            "No copy targets. Set copy.target_address or copy.target_addresses in {}",
+            "No valid copy targets in {}. Set copy.target_address (or copy.target_addresses) to the leader's proxy wallet address (0x + 40 hex chars), not a profile URL. See README 'Finding a leader\\'s address'.",
             trade_path.display()
         );
     }
@@ -520,12 +520,13 @@ async fn main() -> Result<()> {
         config.polymarket.signature_type,
     ));
 
-    let api_auth = api.clone();
-    tokio::spawn(async move {
-        if let Err(e) = api_auth.authenticate().await {
-            log::error!("CLOB authentication (background) failed: {}", e);
-        }
-    });
+    // Warm the CLOB client before the activity WebSocket starts so the first
+    // copied trade is not delayed by FFI init / L1 auth racing the first fill.
+    if !simulation {
+        api.authenticate()
+            .await
+            .context("CLOB authenticate (required for live copy-trading)")?;
+    }
 
     let wallet = if simulation {
         "simulation".to_string()
