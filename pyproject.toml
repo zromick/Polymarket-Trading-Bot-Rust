@@ -1,0 +1,20 @@
+[project]
+name = "polymarket-trading-bot"
+version = "0.0.1"
+description = "Python script to generate Polymarket CLOB API credentials"
+authors = [
+    {name = "Zac Romick", email = "zac.romick@gamil.com"},
+]
+requires-python = ">=3.13.2"
+dependencies = [
+    "py-clob-client>=0.1.8",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.13.0b2",
+    "web3>=8.0.0b1",
+]
+
+[tool.pdm]
+distribution = false
+
+[tool.pdm.scripts]
+start = "python clob_generator.py"
