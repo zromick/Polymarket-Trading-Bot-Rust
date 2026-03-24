@@ -3,7 +3,7 @@ name = "polymarket-trading-bot"
 version = "0.0.1"
 description = "Python script to generate Polymarket CLOB API credentials"
 authors = [
-    {name = "Zac Romick", email = "zac.romick@gamil.com"},
+    {name = "", email = "your@email.com"},
 ]
 requires-python = ">=3.13.2"
 dependencies = [
