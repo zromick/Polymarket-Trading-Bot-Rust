@@ -1,0 +1,22 @@
+[Unit]
+Description=Polymarket Trading Bot (Copy Trading)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/bot
+EnvironmentFile=/root/bot/.env
+ExecStart=/root/bot/target/release/main_copytrading --config config.json --trade-config trade.toml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Safety limits
+LimitNOFILE=65536
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
