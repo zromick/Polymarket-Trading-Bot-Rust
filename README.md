@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">Polymarket CopyTrading Bot</h1>
+  <h1 align="center">Polymarket CopyTrading Bot - Rust Version</h1>
   <p align="center">
     <strong>Mirror elite traders, monitor your book, and get AI-assisted research from a single, fast interface.</strong>
   </p>
