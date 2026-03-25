@@ -410,6 +410,7 @@ pub fn update_balance_allowance(handle: u64, token_id: &str, asset_type: &str) -
         );
     }
     Ok(())
+}
 
 
 // pub fn get_api_connection() -> Result<()> {

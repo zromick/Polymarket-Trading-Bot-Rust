@@ -8,6 +8,8 @@
 !.env.example
 config.json
 config2.json
+trade.toml
+.pdm-python
 *.pem
 
 # Logs and runtime
