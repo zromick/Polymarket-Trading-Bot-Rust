@@ -123,7 +123,7 @@ We are still researching, testing, and refining this stack. If you have real dat
 ### 2. Clone
 
 ```bash
-git clone https://github.com/HyperBuildX/Polymarket-Trading-Bot-Rust.git
+git clone https://github.com/HyperBuildX/Polymarket-Trading-Bot.git
 cd Polymarket-Trading-Bot-Rust
 ```
 
