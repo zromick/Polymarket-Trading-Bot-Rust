@@ -1,18 +1,36 @@
 <p align="center">
-  <h1 align="center">Polymarket CopyTrading Bot - Rust Version</h1>
+  <h1 align="center">Polymarket Trading Bot - Copy-Trading version with Rust</h1>
   <p align="center">
-    <strong>Mirror elite traders, monitor your book, and get AI-assisted research from a single, fast interface.</strong>
+    <strong>Built from real market experience: from failed spread edges to practical, high-speed copy-trading.</strong>
   </p>
   <p align="center">
-    Rust backend &middot; Real-time WebSocket &middot; Web dashboard &middot; Built-in AI Agent
+    Rust backend &middot; Real-time WebSocket &middot; Web dashboard
   </p>
 </p>
 
 ---
 
-## What is this?
+## What Inspired Us
 
-This project is a self-hosted trading co-pilot for [Polymarket](https://polymarket.com). Instead of manually refreshing polymarket.com and tracking wallets by hand, it gives you:
+This is our self-hosted copy-trading system for [Polymarket](https://polymarket.com), built after a lot of trial, failure, and iteration in live markets.
+
+We first entered Polymarket at the end of 2025. Since our background is Web3 dApp development, we initially focused on short-window crypto markets (like BTC in 5-15 minutes) and built spread-based strategies between UP and DOWN tokens.
+
+At first, the edge looked strong. Then the same pattern repeated: once a strategy became crowded, spreads tightened and the advantage faded.
+
+We tested and updated multiple strategy variants, but learned the same lesson again and again:
+- Publicly known edges decay fast
+- Static "formula" bots stop working
+- Most people overfit one setup and then chase losses
+
+After reviewing hundreds of Polymarket trading repos and private scripts, we found that most tools either:
+- hide the core logic,
+- overpromise with no risk framework, or
+- are not production-ready for real-time execution.
+
+That experience pushed us to build this project around what actually stayed reliable for us: disciplined copy-trading plus fast infrastructure.
+
+Instead of manually refreshing polymarket.com and tracking wallets by hand, this bot gives you:
 
 - **Instant copy-trading** — follow one or many high-performing wallets with configurable sizing, filters, and exit rules
 - **Portfolio overview** — see your open positions, notional exposure, and active trades in one consolidated view
@@ -26,7 +44,11 @@ It works across politics, sports, crypto, and macro. You adjust behavior via `tr
 
 ## Why this exists
 
-Copy trading itself is not the hard part — doing it *sensibly* is. Even on fast chains (Solana, Jito, etc.), a lot of people still lost money because the “strategy” was just mirroring a single wallet. That’s fragile.
+Our core conclusion from live testing: for most traders, stable compounding comes less from "finding one secret setup" and more from selecting the right wallets, reacting fast, and managing exits consistently.
+
+We started tracking top Polymarket profiles (especially wallets with strong daily realized PnL) and monitoring their behavior in real time. That shift changed our results more than any single spread/arbitrage logic we tried before.
+
+But copy-trading itself is not enough. Blind mirroring is fragile.
 
 You actually need:
 
@@ -34,15 +56,17 @@ You actually need:
 - Filters on market type, timing, and size
 - Rules for when to follow, when to ignore, and when to exit
 
-That is where **AI** is useful: it can help reason about signals and prioritize which trades to act on.
+That is where **AI** helps in this project: not to auto-trade, but to analyze context and prioritize what deserves attention.
 
-This bot came out of several months of iterating on filters, timing, and position sizing. Backtests, simulation runs, and a small live balance pointed toward **slow, consistent compounding** instead of chasing volatility.
+This bot comes from months of iterating on filters, timing, position sizing, and execution speed. Backtests + simulation + live feedback consistently pointed toward **slow, repeatable growth** instead of chasing volatility.
 
-Most existing Polymarket copy bots are written in TypeScript or Python and tend to be single-threaded. This stack is **Rust front to back** (server + Leptos/WASM UI) so it can process WebSocket feeds and copy decisions in real time while keeping the UI responsive.
+We chose **Rust front-to-back** (backend + Leptos/WASM UI) to keep stream processing and execution responsive under load, especially when multiple leaders fire trades around the same time.
 
-When multiple leaders pile into the same market, the **AI Agent** can help you rank those signals (e.g. by PnL in that category, historical win rate, etc.) so you don’t blindly copy everyone. As markets and leaders evolve, you can use the Agent to periodically reassess which wallets are still worth following.
+When multiple leaders pile into the same market, the Agent can help rank signals (category performance, timing, risk context) so you do not blindly copy everyone.
 
-The design goal isn’t “hit a home run trade”, it’s **durable growth**: diversified risk across sports/crypto/politics/macro, plus an AI-assisted overlay that helps you keep your edge over months, not minutes.
+Our design goal is not "one home run trade." It is **durable growth**: diversified exposure across categories, strict execution logic, and continuous adaptation as market behavior changes.
+
+We are still researching, testing, and refining this stack. If you have real data, ideas, or improvements, we are happy to exchange notes.
 
 
 ---
