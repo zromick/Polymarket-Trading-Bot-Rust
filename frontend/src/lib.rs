@@ -4,6 +4,20 @@ use serde::Deserialize;
 use wasm_bindgen::JsCast;
 use web_sys::EventSource;
 
+/// Convert an ISO 8601 / RFC 3339 UTC timestamp to local time in "h:mm:ss AM/PM" format.
+fn utc_to_local_ampm(iso: &str) -> String {
+    let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
+    if d.get_time().is_nan() {
+        return iso.to_string();
+    }
+    let h = d.get_hours();
+    let m = d.get_minutes();
+    let s = d.get_seconds();
+    let ampm = if h < 12 { "AM" } else { "PM" };
+    let h12 = if h == 0 { 12 } else if h > 12 { h - 12 } else { h };
+    format!("{}:{:02}:{:02} {}", h12, m, s, ampm)
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct TradeLog {
     pub time: String,
@@ -390,11 +404,7 @@ fn LogPage(
                         .into_iter()
                         .enumerate()
                         .map(|(i, r)| {
-                            let time_short = if r.time.len() >= 19 {
-                                r.time[11..19].to_string()
-                            } else {
-                                r.time.clone()
-                            };
+                            let time_short = utc_to_local_ampm(&r.time);
                             let side_class = if r.side.eq_ignore_ascii_case("BUY") {
                                 "side-buy"
                             } else if r.side.eq_ignore_ascii_case("SELL") {
@@ -1024,7 +1034,7 @@ fn DashboardPage(state: Option<BotState>) -> impl IntoView {
                         view! {
                             <ul class="dashboard-activity-list">
                                 {recent.into_iter().map(|r| {
-                                    let t = if r.time.len() >= 19 { r.time[11..19].to_string() } else { r.time.clone() };
+                                    let t = utc_to_local_ampm(&r.time);
                                     let is_buy = r.side.eq_ignore_ascii_case("BUY");
                                     let target_short = r.target_address.as_ref()
                                         .filter(|a| a.len() >= 10)
