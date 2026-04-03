@@ -228,7 +228,11 @@ body {
 .dashboard-activity-icon--buy { background: var(--success); }
 .dashboard-activity-icon--sell { background: var(--danger); }
 .dashboard-activity-text { flex: 1; min-width: 0; color: var(--text); word-break: break-word; }
+.dashboard-activity-target { font-size: 0.6875rem; font-family: var(--font-mono, monospace); color: var(--accent); text-decoration: none; flex-shrink: 0; opacity: 0.8; }
+.dashboard-activity-target:hover { text-decoration: underline; opacity: 1; }
 .dashboard-activity-time { font-size: 0.75rem; color: var(--text-dim); flex-shrink: 0; }
+.log-profile-link { text-decoration: none; }
+.log-profile-link:hover { text-decoration: underline; }
 .dashboard-side { display: flex; flex-direction: column; gap: 1rem; }
 .dashboard-card { padding: 1rem; }
 .dashboard-metric { font-size: 0.875rem; color: var(--text); margin: 0 0 0.5rem 0; }

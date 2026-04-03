@@ -683,8 +683,8 @@ async fn main() -> Result<()> {
         // Periodically refresh wallet balances (USDC + POL gas)
         if !simulation && last_balance_fetch.elapsed() >= balance_interval {
             last_balance_fetch = std::time::Instant::now();
-            let usdc = match api.check_usdc_balance_allowance().await {
-                Ok((balance, _)) => Some(balance.to_string().parse::<f64>().unwrap_or(0.0)),
+            let usdc = match api.get_usdc_balance_rpc().await {
+                Ok(b) => Some(b),
                 Err(e) => { log::warn!("USDC balance fetch: {}", e); None }
             };
             let pol = match api.get_pol_balance().await {

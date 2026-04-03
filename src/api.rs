@@ -31,6 +31,7 @@ sol! {
     #[sol(rpc)]
     interface IERC20 {
         function allowance(address owner, address spender) external view returns (uint256);
+        function balanceOf(address account) external view returns (uint256);
     }
 
     #[sol(rpc)]
@@ -1956,6 +1957,34 @@ impl PolymarketApi {
 
     pub fn has_api_credentials(&self) -> bool {
         self.api_key.is_some() && self.api_secret.is_some() && self.api_passphrase.is_some()
+    }
+
+    /// Fetch USDC balance for the proxy (or EOA) wallet via direct RPC call.
+    /// Returns balance in human-readable USDC (6 decimals on Polygon).
+    pub async fn get_usdc_balance_rpc(&self) -> Result<f64> {
+        const USDC_ADDRESS_STR: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+        let usdc_address = AlloyAddress::from_str(USDC_ADDRESS_STR)
+            .context("Invalid USDC address")?;
+        let account = if let Some(proxy_addr) = &self.proxy_wallet_address {
+            AlloyAddress::parse_checksummed(proxy_addr, None)
+                .or_else(|_| AlloyAddress::from_str(proxy_addr))
+                .context(format!("Failed to parse proxy_wallet_address: {}", proxy_addr))?
+        } else {
+            let pk = self.private_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("private_key required"))?;
+            LocalSigner::from_str(pk).context("Invalid private_key")?.address()
+        };
+        let rpc_url = Self::polygon_rpc_url();
+        let provider = ProviderBuilder::new()
+            .connect(&rpc_url)
+            .await
+            .context("Failed to connect to Polygon RPC")?;
+        let usdc = IERC20::new(usdc_address, provider);
+        let balance = usdc.balanceOf(account).call().await
+            .context("USDC balanceOf call failed")?;
+        // USDC on Polygon has 6 decimals
+        let raw_f64 = balance.to_string().parse::<f64>().unwrap_or(0.0);
+        Ok(raw_f64 / 1e6)
     }
 
     /// Fetch native POL (MATIC) balance for the signing wallet (the one that pays gas).

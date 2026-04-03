@@ -433,7 +433,20 @@ fn LogPage(
                                     <td class="p-2 tabular-nums">{price_display}</td>
                                     <td class="p-2 break-words">{r_slug}</td>
                                     <td class="p-2 font-mono text-[11px] break-all" style=format!("color: {}", cell_color)>
-                                        {r_target.unwrap_or_default()}
+                                        {match r_target {
+                                            Some(ref addr) if !addr.is_empty() => {
+                                                let short = if addr.len() >= 10 {
+                                                    format!("{}..{}", &addr[..6], &addr[addr.len()-4..])
+                                                } else {
+                                                    addr.clone()
+                                                };
+                                                let url = format!("https://polymarket.com/profile/{}", addr);
+                                                view! {
+                                                    <a href=url target="_blank" rel="noopener" class="log-profile-link" style=format!("color: {}", cell_color)>{short}</a>
+                                                }.into_view()
+                                            }
+                                            _ => view! { <span>""</span> }.into_view()
+                                        }}
                                     </td>
                                     <td class="p-2">{r_status.unwrap_or_default()}</td>
                                 </tr>
@@ -1003,10 +1016,23 @@ fn DashboardPage(state: Option<BotState>) -> impl IntoView {
                                 {recent.into_iter().map(|r| {
                                     let t = if r.time.len() >= 19 { r.time[11..19].to_string() } else { r.time.clone() };
                                     let is_buy = r.side.eq_ignore_ascii_case("BUY");
+                                    let target_short = r.target_address.as_ref()
+                                        .filter(|a| a.len() >= 10)
+                                        .map(|a| format!("{}..{}", &a[..6], &a[a.len()-4..]))
+                                        .unwrap_or_default();
+                                    let target_url = r.target_address.as_ref()
+                                        .filter(|a| !a.is_empty())
+                                        .map(|a| format!("https://polymarket.com/profile/{}", a));
                                     view! {
                                         <li class="dashboard-activity-item">
                                             <span class=if is_buy { "dashboard-activity-icon dashboard-activity-icon--buy" } else { "dashboard-activity-icon dashboard-activity-icon--sell" }></span>
                                             <span class="dashboard-activity-text">{format!("{} {} @ {} — {}", r.side, r.outcome, r.price, if r.slug.len() > 36 { format!("{}…", &r.slug[..33]) } else { r.slug })}</span>
+                                            {match target_url {
+                                                Some(url) => view! {
+                                                    <a href=url target="_blank" rel="noopener" class="dashboard-activity-target">{target_short}</a>
+                                                }.into_view(),
+                                                None => view! { <span></span> }.into_view(),
+                                            }}
                                             <span class="dashboard-activity-time">{t}</span>
                                         </li>
                                     }
