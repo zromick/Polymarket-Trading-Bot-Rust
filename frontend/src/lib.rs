@@ -921,7 +921,11 @@ fn AgentPage(
 }
 
 #[component]
-fn PortfolioPage(state: Option<BotState>) -> impl IntoView {
+fn PortfolioPage(
+    state: Option<BotState>,
+    filter: ReadSignal<String>,
+    set_filter: WriteSignal<String>,
+) -> impl IntoView {
     let my_wallet_key = state.as_ref().and_then(|s| s.status.wallet.as_ref()).map(|w| w.to_lowercase());
     let all_positions = state
         .as_ref()
@@ -951,7 +955,6 @@ fn PortfolioPage(state: Option<BotState>) -> impl IntoView {
     let open_for_render = open_positions.clone();
     let closed_for_render = closed_positions.clone();
     let all_for_render = all_positions.clone();
-    let (filter, set_filter) = create_signal("active".to_string());
     view! {
         <div class="page-content flex-1 overflow-auto p-4">
             <h1 class="page-title">"Portfolio"</h1>
@@ -1548,6 +1551,7 @@ fn AppInner() -> impl IntoView {
     let (agent_loading, set_agent_loading) = create_signal(false);
     let (agent_error, set_agent_error) = create_signal::<Option<String>>(None);
     let (selected_log_target, set_selected_log_target) = create_signal::<Option<String>>(None);
+    let (portfolio_filter, set_portfolio_filter) = create_signal("active".to_string());
     let target_colors = create_rw_signal::<std::collections::HashMap<String, String>>(load_target_colors_from_storage());
     let theme = create_rw_signal::<String>(load_theme());
     let sidebar_open = create_rw_signal(false);
@@ -1726,7 +1730,7 @@ fn AppInner() -> impl IntoView {
                     } else if p == "/portfolio" {
                         view! {
                             <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
-                                <PortfolioPage state=state_slice()/>
+                                <PortfolioPage state=state_slice() filter=portfolio_filter set_filter=set_portfolio_filter/>
                             </div>
                         }.into_view()
                     } else {
