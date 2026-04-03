@@ -304,7 +304,18 @@ pub async fn copy_trade(
 
     api.place_market_order_fast(&trade.asset_id, amount_usd_or_shares, &trade.side, Some("FAK"))
         .await
-        .context("place_market_order failed")?;
+        .map_err(|e| {
+            let msg = format!("{}", e);
+            if msg.contains("No opposing orders") {
+                anyhow::anyhow!("No liquidity (no sell orders on book)")
+            } else if msg.contains("not enough balance") {
+                anyhow::anyhow!("Not enough USDC balance")
+            } else if msg.contains("min size") {
+                anyhow::anyhow!("Below $1 minimum order size")
+            } else {
+                anyhow::anyhow!("{}", msg)
+            }
+        })?;
 
     let price_f = price.to_f64().unwrap_or(0.0);
     Ok(Some((size_out, price_f)))
