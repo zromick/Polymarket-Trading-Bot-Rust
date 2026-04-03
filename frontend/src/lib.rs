@@ -39,6 +39,10 @@ pub struct PositionSummary {
     pub cur_price: f64,
     pub delta: Option<f64>,
     pub delta_at: Option<String>,
+    #[serde(default)]
+    pub status: String,
+    pub closed_at: Option<String>,
+    pub close_price: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -462,7 +466,21 @@ fn LogPage(
                                         match r_status.as_deref() {
                                             Some("ok") => view! { <span class="status-ok" title="Filled">"OK"</span> }.into_view(),
                                             Some("loaded") => view! { <span class="status-loaded" title="Loaded at startup">"POS"</span> }.into_view(),
-                                            Some(s) if s.starts_with("FAILED") => view! { <span class="status-fail" title=s.to_string()>"FAIL"</span> }.into_view(),
+                                            Some(s) if s.starts_with("FAILED") => {
+                                                let reason = s.strip_prefix("FAILED: ").unwrap_or(s);
+                                                let short_reason = if reason.contains("No opposing orders") {
+                                                    "No liquidity"
+                                                } else if reason.contains("not enough balance") {
+                                                    "Low balance"
+                                                } else if reason.contains("min size") {
+                                                    "Below min size"
+                                                } else if reason.len() > 30 {
+                                                    &reason[..30]
+                                                } else {
+                                                    reason
+                                                };
+                                                view! { <span class="status-fail" title=s.to_string()>"FAIL: " {short_reason.to_string()}</span> }.into_view()
+                                            }
                                             Some(s) if s.contains("skipped") => view! { <span class="status-skip" title=s.to_string()>"SKIP"</span> }.into_view(),
                                             Some("timeout") => view! { <span class="status-fail" title="Timed out">"TIMEOUT"</span> }.into_view(),
                                             Some(s) => view! { <span>{s.to_string()}</span> }.into_view(),
@@ -904,13 +922,16 @@ fn AgentPage(
 
 #[component]
 fn PortfolioPage(state: Option<BotState>) -> impl IntoView {
-    // Show total value and open positions for the .env wallet (config wallet) only.
     let my_wallet_key = state.as_ref().and_then(|s| s.status.wallet.as_ref()).map(|w| w.to_lowercase());
-    let my_positions = state
+    let all_positions = state
         .as_ref()
         .and_then(|s| my_wallet_key.as_ref().and_then(|k| s.positions.get(k).cloned()))
         .unwrap_or_default();
-    let total_value = my_positions.iter().fold(0.0_f64, |acc, p| acc + p.size * p.cur_price);
+    let open_positions: Vec<_> = all_positions.iter().filter(|p| p.status != "closed").cloned().collect();
+    let closed_positions: Vec<_> = all_positions.iter().filter(|p| p.status == "closed").cloned().collect();
+    let total_value = open_positions.iter().fold(0.0_f64, |acc, p| acc + p.size * p.cur_price);
+    let open_count = open_positions.len();
+    let closed_count = closed_positions.len();
     let wallet_label = state
         .as_ref()
         .and_then(|s| s.status.wallet.as_ref())
@@ -922,49 +943,92 @@ fn PortfolioPage(state: Option<BotState>) -> impl IntoView {
             }
         })
         .unwrap_or_else(|| "—".to_string());
+    let usdc_bal = state.as_ref()
+        .and_then(|s| s.balances.usdc)
+        .map(|v| format!("${:.2}", v))
+        .unwrap_or_else(|| "—".to_string());
+    // Clone for use in closures
+    let open_for_render = open_positions.clone();
+    let closed_for_render = closed_positions.clone();
+    let all_for_render = all_positions.clone();
+    let (filter, set_filter) = create_signal("active".to_string());
     view! {
         <div class="page-content flex-1 overflow-auto p-4">
             <h1 class="page-title">"Portfolio"</h1>
-            <p class="page-desc mb-4">"Total value and open positions for your wallet (.env / config)."</p>
+            <p class="page-desc mb-4">"Positions for your wallet (" {wallet_label} ")."</p>
             <div class="grid gap-3 md:grid-cols-3 mb-6">
                 <div class="card p-4">
                     <span class="section-label">"TOTAL VALUE"</span>
                     <p class="text-xl font-semibold tabular-nums">{format!("${:.2}", total_value)}</p>
-                    <p class="text-muted text-xs mt-1">"Your wallet (" {wallet_label.clone()} ")"</p>
                 </div>
                 <div class="card p-4">
-                    <span class="section-label">"OPEN POSITIONS"</span>
-                    <p class="text-xl font-semibold tabular-nums">{my_positions.len()}</p>
-                    <p class="text-muted text-xs mt-1">"Your wallet (" {wallet_label} ")"</p>
+                    <span class="section-label">"POSITIONS"</span>
+                    <p class="text-xl font-semibold tabular-nums">{open_count} " open / " {closed_count} " closed"</p>
                 </div>
                 <div class="card p-4">
-                    <span class="section-label">"AVAILABLE"</span>
-                    <p class="text-muted text-sm">"—"</p>
+                    <span class="section-label">"AVAILABLE USDC"</span>
+                    <p class="text-xl font-semibold tabular-nums">{usdc_bal}</p>
                 </div>
             </div>
             <div class="card p-4">
-                <span class="section-label">"ACTIVE TRADES"</span>
-                {if my_positions.is_empty() {
-                    view! {
-                        <p class="text-muted text-sm py-4">"No open positions for your wallet. Copy trades or open positions to see them here."</p>
-                    }.into_view()
-                } else {
-                    view! {
-                        <ul class="divide-y divide-border mt-2">
-                            {my_positions
-                                .into_iter()
-                                .map(|p| {
-                                    view! {
-                                        <li class="py-2 flex justify-between items-center gap-2 flex-wrap">
-                                            <span class="font-mono text-sm">{p.slug}</span>
-                                            <span class="text-muted text-sm">{p.outcome}</span>
-                                            <span class="tabular-nums">{format!("{:.4}", p.size)} " @ " {format!("{:.4}", p.cur_price)}</span>
-                                        </li>
-                                    }
-                                })
-                                .collect_view()}
-                        </ul>
-                    }.into_view()
+                <div class="portfolio-filter-bar mb-3">
+                    <button class=move || if filter.get() == "active" { "portfolio-filter-btn portfolio-filter-btn--active" } else { "portfolio-filter-btn" }
+                        on:click=move |_| set_filter.set("active".to_string())>"Active"</button>
+                    <button class=move || if filter.get() == "closed" { "portfolio-filter-btn portfolio-filter-btn--active" } else { "portfolio-filter-btn" }
+                        on:click=move |_| set_filter.set("closed".to_string())>"Closed"</button>
+                    <button class=move || if filter.get() == "all" { "portfolio-filter-btn portfolio-filter-btn--active" } else { "portfolio-filter-btn" }
+                        on:click=move |_| set_filter.set("all".to_string())>"All"</button>
+                </div>
+                {move || {
+                    let f = filter.get();
+                    let positions: Vec<_> = match f.as_str() {
+                        "closed" => closed_for_render.clone(),
+                        "all" => all_for_render.clone(),
+                        _ => open_for_render.clone(),
+                    };
+                    if positions.is_empty() {
+                        view! {
+                            <p class="text-muted text-sm py-4">"No positions to show."</p>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <table class="w-full border-collapse text-xs">
+                                <thead>
+                                    <tr>
+                                        <th class="p-2 text-left text-muted font-medium border-b border">"Market"</th>
+                                        <th class="p-2 text-left text-muted font-medium border-b border">"Outcome"</th>
+                                        <th class="p-2 text-right text-muted font-medium border-b border">"Shares"</th>
+                                        <th class="p-2 text-right text-muted font-medium border-b border">"Price"</th>
+                                        <th class="p-2 text-right text-muted font-medium border-b border">"Value"</th>
+                                        <th class="p-2 text-left text-muted font-medium border-b border">"Status"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {positions.into_iter().map(|p| {
+                                        let is_closed = p.status == "closed";
+                                        let value = p.size * p.cur_price;
+                                        let price_display = p.close_price.unwrap_or(p.cur_price);
+                                        let closed_time = p.closed_at.as_ref().map(|t| utc_to_local_ampm(t)).unwrap_or_default();
+                                        let row_class = if is_closed { "border-b border portfolio-row-closed" } else { "border-b border" };
+                                        view! {
+                                            <tr class=row_class>
+                                                <td class="p-2 font-mono">{p.slug}</td>
+                                                <td class="p-2">{p.outcome}</td>
+                                                <td class="p-2 text-right tabular-nums">{format!("{:.2}", p.size)}</td>
+                                                <td class="p-2 text-right tabular-nums">{format!("{:.3}", price_display)}</td>
+                                                <td class="p-2 text-right tabular-nums">{format!("${:.2}", value)}</td>
+                                                <td class="p-2">{if is_closed {
+                                                    view! { <span class="status-closed">"Closed " {closed_time}</span> }.into_view()
+                                                } else {
+                                                    view! { <span class="status-open">"Open"</span> }.into_view()
+                                                }}</td>
+                                            </tr>
+                                        }
+                                    }).collect_view()}
+                                </tbody>
+                            </table>
+                        }.into_view()
+                    }
                 }}
             </div>
         </div>

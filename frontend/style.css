@@ -241,6 +241,18 @@ body {
 .status-skip::before { content: "\2014 "; }
 .status-loaded { color: var(--text-muted); font-size: 0.6875rem; }
 .dashboard-activity-status { flex-shrink: 0; font-size: 0.6875rem; }
+.portfolio-filter-bar { display: flex; gap: 0.375rem; }
+.portfolio-filter-btn {
+    padding: 0.25rem 0.75rem; font-size: 0.75rem; font-weight: 500;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.portfolio-filter-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.portfolio-filter-btn--active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.portfolio-row-closed { opacity: 0.55; }
+.status-open { color: var(--success); font-weight: 500; font-size: 0.6875rem; }
+.status-open::before { content: "\25CF "; font-size: 0.5rem; }
+.status-closed { color: var(--text-dim); font-size: 0.6875rem; }
 .dashboard-side { display: flex; flex-direction: column; gap: 1rem; }
 .dashboard-card { padding: 1rem; }
 .dashboard-metric { font-size: 0.875rem; color: var(--text); margin: 0 0 0.5rem 0; }

@@ -30,6 +30,19 @@ pub struct PositionSummary {
     pub delta: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delta_at: Option<String>,
+    /// "open" or "closed"
+    #[serde(default = "default_open")]
+    pub status: String,
+    /// When the position was closed (ISO timestamp)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closed_at: Option<String>,
+    /// Last known price when position closed (for P&L display)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub close_price: Option<f64>,
+}
+
+fn default_open() -> String {
+    "open".to_string()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,19 +173,24 @@ pub async fn set_positions(
 ) {
     let user = user.to_string();
     let mut prev: HashMap<String, f64> = HashMap::new();
+    let mut prev_positions: HashMap<String, PositionSummary> = HashMap::new();
     {
         let s = state.read().await;
         if let Some(existing) = s.positions.get(&user) {
             for p in existing {
                 let key = format!("{}|{}", p.slug, p.outcome);
-                prev.insert(key, p.size);
+                prev.insert(key.clone(), p.size);
+                prev_positions.insert(key, p.clone());
             }
         }
     }
     let now = chrono::Utc::now().to_rfc3339();
+    // Build set of currently-open position keys
+    let mut open_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut list = Vec::with_capacity(positions.len());
     for (slug, outcome, size, cur_price) in positions {
         let key = format!("{}|{}", slug, outcome);
+        open_keys.insert(key.clone());
         let prev_size = prev.get(&key).copied();
         prev.insert(key, size);
         let (delta, delta_at) = prev_size
@@ -192,7 +210,32 @@ pub async fn set_positions(
                 None
             },
             delta_at,
+            status: "open".to_string(),
+            closed_at: None,
+            close_price: None,
         });
+    }
+    // Detect positions that disappeared (closed/resolved) and mark them
+    for (key, old_pos) in &prev_positions {
+        if old_pos.status == "open" && !open_keys.contains(key) {
+            list.push(PositionSummary {
+                slug: old_pos.slug.clone(),
+                outcome: old_pos.outcome.clone(),
+                size: old_pos.size,
+                cur_price: old_pos.cur_price,
+                delta: None,
+                delta_at: None,
+                status: "closed".to_string(),
+                closed_at: Some(now.clone()),
+                close_price: Some(old_pos.cur_price),
+            });
+        }
+    }
+    // Keep previously-closed positions
+    for old_pos in prev_positions.values() {
+        if old_pos.status == "closed" {
+            list.push(old_pos.clone());
+        }
     }
     let mut s = state.write().await;
     s.positions.insert(user, list);
