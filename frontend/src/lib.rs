@@ -448,7 +448,17 @@ fn LogPage(
                                             _ => view! { <span>""</span> }.into_view()
                                         }}
                                     </td>
-                                    <td class="p-2">{r_status.unwrap_or_default()}</td>
+                                    <td class="p-2">{
+                                        match r_status.as_deref() {
+                                            Some("ok") => view! { <span class="status-ok" title="Filled">"OK"</span> }.into_view(),
+                                            Some("loaded") => view! { <span class="status-loaded" title="Loaded at startup">"POS"</span> }.into_view(),
+                                            Some(s) if s.starts_with("FAILED") => view! { <span class="status-fail" title=s.to_string()>"FAIL"</span> }.into_view(),
+                                            Some(s) if s.contains("skipped") => view! { <span class="status-skip" title=s.to_string()>"SKIP"</span> }.into_view(),
+                                            Some("timeout") => view! { <span class="status-fail" title="Timed out">"TIMEOUT"</span> }.into_view(),
+                                            Some(s) => view! { <span>{s.to_string()}</span> }.into_view(),
+                                            None => view! { <span>""</span> }.into_view(),
+                                        }
+                                    }</td>
                                 </tr>
                             }
                         })
@@ -1023,10 +1033,31 @@ fn DashboardPage(state: Option<BotState>) -> impl IntoView {
                                     let target_url = r.target_address.as_ref()
                                         .filter(|a| !a.is_empty())
                                         .map(|a| format!("https://polymarket.com/profile/{}", a));
+                                    let status_class = match r.copy_status.as_deref() {
+                                        Some("ok") => "status-ok",
+                                        Some("loaded") => "status-loaded",
+                                        Some(s) if s.starts_with("FAILED") => "status-fail",
+                                        Some(s) if s.contains("skipped") => "status-skip",
+                                        Some("timeout") => "status-fail",
+                                        _ => "",
+                                    };
+                                    let status_label = match r.copy_status.as_deref() {
+                                        Some("ok") => "OK",
+                                        Some("loaded") => "",
+                                        Some(s) if s.starts_with("FAILED") => "FAIL",
+                                        Some(s) if s.contains("skipped") => "SKIP",
+                                        Some("timeout") => "TIMEOUT",
+                                        _ => "",
+                                    };
                                     view! {
                                         <li class="dashboard-activity-item">
                                             <span class=if is_buy { "dashboard-activity-icon dashboard-activity-icon--buy" } else { "dashboard-activity-icon dashboard-activity-icon--sell" }></span>
                                             <span class="dashboard-activity-text">{format!("{} {} @ {} — {}", r.side, r.outcome, r.price, if r.slug.len() > 36 { format!("{}…", &r.slug[..33]) } else { r.slug })}</span>
+                                            {if !status_label.is_empty() {
+                                                view! { <span class=format!("dashboard-activity-status {}", status_class)>{status_label}</span> }.into_view()
+                                            } else {
+                                                view! { <span></span> }.into_view()
+                                            }}
                                             {match target_url {
                                                 Some(url) => view! {
                                                     <a href=url target="_blank" rel="noopener" class="dashboard-activity-target">{target_short}</a>
