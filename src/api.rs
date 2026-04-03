@@ -1958,12 +1958,42 @@ impl PolymarketApi {
         self.api_key.is_some() && self.api_secret.is_some() && self.api_passphrase.is_some()
     }
 
+    /// Fetch native POL (MATIC) balance for the signing wallet (the one that pays gas).
+    pub async fn get_pol_balance(&self) -> Result<f64> {
+        let private_key = self.private_key.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("private_key required to get POL balance"))?;
+        let signer = LocalSigner::from_str(private_key)
+            .context("Invalid private_key")?;
+        let signer_address = signer.address();
+        let rpc_url = Self::polygon_rpc_url();
+        let provider = ProviderBuilder::new()
+            .connect(&rpc_url)
+            .await
+            .context("Failed to connect to Polygon RPC")?;
+        let balance = provider
+            .get_balance(signer_address)
+            .await
+            .context("Failed to get POL balance")?;
+        // Convert from wei (18 decimals) to POL
+        let wei_f64 = balance.to_string().parse::<f64>().unwrap_or(0.0);
+        Ok(wei_f64 / 1e18)
+    }
+
     pub fn get_wallet_address(&self) -> Result<String> {
         if let Some(ref proxy) = self.proxy_wallet_address {
             return Ok(proxy.clone());
         }
         let pk = self.private_key.as_ref()
             .ok_or_else(|| anyhow::anyhow!("private_key required to get wallet address"))?;
+        let signer = LocalSigner::from_str(pk)
+            .context("Invalid private_key")?;
+        Ok(format!("{}", signer.address()))
+    }
+
+    /// Return the EOA (signer) address derived from the private key.
+    pub fn get_eoa_address(&self) -> Result<String> {
+        let pk = self.private_key.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("private_key required to get EOA address"))?;
         let signer = LocalSigner::from_str(pk)
             .context("Invalid private_key")?;
         Ok(format!("{}", signer.address()))

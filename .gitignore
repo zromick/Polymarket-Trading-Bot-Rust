@@ -28,6 +28,12 @@ frontend/target/
 *.swo
 *~
 
+# Private deployment docs
+README2.md
+
+# Prompt logs
+prompts-*.txt
+
 # OS
 .DS_Store
 Thumbs.db

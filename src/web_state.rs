@@ -39,6 +39,8 @@ pub struct Status {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wallet: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub eoa_wallet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub target_addresses: Option<Vec<String>>,
 }
 
@@ -49,11 +51,18 @@ pub struct UiConfig {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct WalletBalances {
+    pub usdc: Option<f64>,
+    pub pol: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BotState {
     pub logs: Vec<TradeLog>,
     pub status: Status,
     pub positions: HashMap<String, Vec<PositionSummary>>,
     pub ui: UiConfig,
+    pub balances: WalletBalances,
 }
 
 impl Default for BotState {
@@ -64,12 +73,17 @@ impl Default for BotState {
                 mode: String::new(),
                 targets: 0,
                 wallet: None,
+                eoa_wallet: None,
                 target_addresses: None,
             },
             positions: HashMap::new(),
             ui: UiConfig {
                 delta_highlight_sec: 10,
                 delta_animation_sec: 2,
+            },
+            balances: WalletBalances {
+                usdc: None,
+                pol: None,
             },
         }
     }
@@ -90,6 +104,7 @@ pub async fn set_status(
     mode: String,
     targets: u32,
     wallet: Option<String>,
+    eoa_wallet: Option<String>,
     target_addresses: Option<Vec<String>>,
 ) {
     let mut s = state.write().await;
@@ -97,6 +112,7 @@ pub async fn set_status(
         mode,
         targets,
         wallet,
+        eoa_wallet,
         target_addresses,
     };
 }
@@ -180,4 +196,9 @@ pub async fn set_positions(
     }
     let mut s = state.write().await;
     s.positions.insert(user, list);
+}
+
+pub async fn set_balances(state: SharedState, usdc: Option<f64>, pol: Option<f64>) {
+    let mut s = state.write().await;
+    s.balances = WalletBalances { usdc, pol };
 }

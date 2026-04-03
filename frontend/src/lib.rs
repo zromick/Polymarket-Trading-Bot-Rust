@@ -32,6 +32,7 @@ pub struct Status {
     pub mode: String,
     pub targets: u32,
     pub wallet: Option<String>,
+    pub eoa_wallet: Option<String>,
     pub target_addresses: Option<Vec<String>>,
 }
 
@@ -55,11 +56,19 @@ pub struct LeaderboardEntry {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+pub struct WalletBalances {
+    pub usdc: Option<f64>,
+    pub pol: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct BotState {
     pub logs: Vec<TradeLog>,
     pub status: Status,
     pub positions: std::collections::HashMap<String, Vec<PositionSummary>>,
     pub ui: UiConfig,
+    #[serde(default)]
+    pub balances: WalletBalances,
 }
 
 async fn fetch_state() -> Result<BotState, String> {
@@ -941,6 +950,24 @@ fn DashboardPage(state: Option<BotState>) -> impl IntoView {
             s.positions.get(&wallet.to_lowercase()).map(|p| p.len()).unwrap_or(0)
         }
     });
+    let proxy_prefix = state.as_ref()
+        .and_then(|s| s.status.wallet.as_ref())
+        .filter(|w| w.len() >= 6)
+        .map(|w| w[..6].to_string())
+        .unwrap_or_else(|| "—".to_string());
+    let eoa_prefix = state.as_ref()
+        .and_then(|s| s.status.eoa_wallet.as_ref())
+        .filter(|w| w.len() >= 6)
+        .map(|w| w[..6].to_string())
+        .unwrap_or_else(|| "—".to_string());
+    let usdc_display = state.as_ref()
+        .and_then(|s| s.balances.usdc)
+        .map(|v| format!("${:.2}", v))
+        .unwrap_or_else(|| "—".to_string());
+    let pol_display = state.as_ref()
+        .and_then(|s| s.balances.pol)
+        .map(|v| format!("{:.4} POL", v))
+        .unwrap_or_else(|| "—".to_string());
     let mode_for_dot = mode.clone();
     let recent: Vec<TradeLog> = state
         .as_ref()
@@ -994,6 +1021,35 @@ fn DashboardPage(state: Option<BotState>) -> impl IntoView {
                         <h2 class="dashboard-section-title">"Portfolio"</h2>
                         <p class="dashboard-metric">{format!("{} position(s) active", positions_count)}</p>
                         <A href="/portfolio" class="dashboard-link">"View portfolio"</A>
+                    </section>
+                    <section class="dashboard-card card">
+                        <h2 class="dashboard-section-title">"Wallet"</h2>
+                        <div class="dashboard-status-rows">
+                            <div class="dashboard-status-row">
+                                <span class="dashboard-label">
+                                    {format!("USDC ({}..)", proxy_prefix)}
+                                    <span class="wallet-info-wrap">
+                                        <span class="wallet-info-icon">"i"</span>
+                                        <span class="wallet-info-tooltip">
+                                            "Fund via Coinbase: Buy USDC, then Withdraw to Polygon network. Paste your Polymarket deposit address (found under Deposit > Crypto > USDC). Arrives in minutes, < $0.01 fee."
+                                        </span>
+                                    </span>
+                                </span>
+                                <span class="dashboard-value">{usdc_display}</span>
+                            </div>
+                            <div class="dashboard-status-row">
+                                <span class="dashboard-label">
+                                    {format!("POL ({}..)", eoa_prefix)}
+                                    <span class="wallet-info-wrap">
+                                        <span class="wallet-info-icon">"i"</span>
+                                        <span class="wallet-info-tooltip">
+                                            "Fund via Coinbase: Buy POL (Polygon), then Send to your EOA wallet address on Polygon network. This wallet pays gas fees for trade execution."
+                                        </span>
+                                    </span>
+                                </span>
+                                <span class="dashboard-value">{pol_display}</span>
+                            </div>
+                        </div>
                     </section>
                     <section class="dashboard-card card">
                         <h2 class="dashboard-section-title">"Status"</h2>

@@ -545,12 +545,19 @@ async fn main() -> Result<()> {
         }
     );
 
+    let eoa_wallet = if simulation {
+        None
+    } else {
+        api.get_eoa_address().ok()
+    };
+
     let web_state = web_state::new_shared_state();
     web_state::set_status(
         web_state.clone(),
         if simulation { "Sim".to_string() } else { "Live".to_string() },
         targets.len() as u32,
         Some(wallet.clone()),
+        eoa_wallet,
         Some(targets.clone()),
     )
     .await;
@@ -600,6 +607,10 @@ async fn main() -> Result<()> {
 
     let poll_secs = copy_config.copy.poll_interval_sec.clamp(0.25, 3600.0);
     let poll_interval = std::time::Duration::from_secs_f64(poll_secs);
+
+    // How often to refresh wallet balances (every ~30s to avoid RPC spam)
+    let balance_interval = std::time::Duration::from_secs(30);
+    let mut last_balance_fetch = std::time::Instant::now() - balance_interval; // fetch immediately on first loop
 
     let users_to_fetch: Vec<String> = if wallet == "simulation" {
         targets.iter().cloned().collect()
@@ -669,6 +680,21 @@ async fn main() -> Result<()> {
                 initial_done.insert(user_lower);
             }
         }
+        // Periodically refresh wallet balances (USDC + POL gas)
+        if !simulation && last_balance_fetch.elapsed() >= balance_interval {
+            last_balance_fetch = std::time::Instant::now();
+            let usdc = match api.check_usdc_balance_allowance().await {
+                Ok((balance, _)) => Some(balance.to_string().parse::<f64>().unwrap_or(0.0)),
+                Err(e) => { log::warn!("USDC balance fetch: {}", e); None }
+            };
+            let pol = match api.get_pol_balance().await {
+                Ok(b) => Some(b),
+                Err(e) => { log::warn!("POL balance fetch: {}", e); None }
+            };
+            web_state::set_balances(web_state.clone(), usdc, pol).await;
+            let _ = notify_tx.send(());
+        }
+
         tokio::time::sleep(poll_interval).await;
     }
 }
